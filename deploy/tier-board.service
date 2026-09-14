@@ -1,0 +1,22 @@
+[Unit]
+Description=Hangla Tier Board
+After=network.target
+
+[Service]
+Type=simple
+User=tierboard
+Group=tierboard
+WorkingDirectory=/opt/tier-board
+Environment=NODE_ENV=production
+Environment=PORT=3000
+Environment=DATA_DIR=/var/lib/tier-board
+ExecStart=/usr/bin/node /opt/tier-board/server/node.mjs
+Restart=always
+RestartSec=3
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=full
+ReadWritePaths=/var/lib/tier-board
+
+[Install]
+WantedBy=multi-user.target

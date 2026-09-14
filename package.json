@@ -7,7 +7,8 @@
     "build": "node scripts/build.mjs",
     "db:generate": "drizzle-kit generate",
     "check": "node --check src/worker.js && node --check scripts/build.mjs",
-    "test": "npm run build && node scripts/test-worker.mjs"
+    "start:node": "node server/node.mjs",
+    "test": "npm run build && node scripts/test-worker.mjs && node scripts/test-node-server.mjs"
   },
   "dependencies": {
     "drizzle-orm": "0.45.2"
