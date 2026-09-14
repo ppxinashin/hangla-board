@@ -8,6 +8,13 @@
       "when": 1789367374274,
       "tag": "0000_hard_miek",
       "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "6",
+      "when": 1789370649248,
+      "tag": "0001_dazzling_loki",
+      "breakpoints": true
     }
   ]
 }
