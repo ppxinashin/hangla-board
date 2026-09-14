@@ -66,14 +66,18 @@ const initialState = {
 
 const created = await call('/api/rooms', 'POST', { participantId: 'host-1', nickname: '主持人', state: initialState });
 assert.equal(created.response.status, 200);
-assert.match(created.data.code, /^\d{6}$/);
+assert.match(created.data.code, /^[A-Z0-9]{8}$/);
 assert.ok(created.data.hostKey);
 assert.equal(created.data.hostParticipantId, 'host-1');
 
 const code = created.data.code;
-const joined = await call(`/api/rooms/${code}/join`, 'POST', { participantId: 'guest-1', nickname: '嘉宾' });
+const joined = await call(`/api/rooms/${code.toLowerCase()}/join`, 'POST', { participantId: 'guest-1', nickname: '嘉宾' });
 assert.equal(joined.response.status, 200);
+assert.equal(joined.data.code, code);
 assert.equal(joined.data.state.title, '联机测试');
+
+const legacyCode = await call('/api/rooms/123456/join', 'POST', { participantId: 'legacy', nickname: '旧房间' });
+assert.equal(legacyCode.response.status, 400);
 
 const readOnlyRoom = await call(`/api/rooms/${code}`);
 assert.equal(readOnlyRoom.response.status, 200);
@@ -148,5 +152,7 @@ assert.match(pageHtml, /mapWithConcurrency\(files, state\.room \? 4 : 12/);
 assert.match(pageHtml, /optimizeImageForUpload/);
 assert.match(pageHtml, /房主不能直接退出/);
 assert.match(pageHtml, /transferRoomAndLeave/);
+assert.match(pageHtml, /输入 8 位字母或数字房间号/);
+assert.match(pageHtml, /toUpperCase\(\)\.replace\(\/\[\^A-Z0-9\]\//);
 
 console.log('Worker collaboration tests passed');
