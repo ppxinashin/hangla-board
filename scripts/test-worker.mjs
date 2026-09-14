@@ -34,11 +34,14 @@ class R2Mock {
     const object = this.objects.get(key);
     return object ? { body: object.value } : null;
   }
+  async delete(key) { this.objects.delete(key); }
 }
 
 const DB = new D1Mock();
-const migration = await readFile(new URL('../drizzle/0000_hard_miek.sql', import.meta.url), 'utf8');
-for (const statement of migration.split('--> statement-breakpoint').map(value => value.trim()).filter(Boolean)) DB.exec(statement);
+for (const name of ['0000_hard_miek.sql', '0001_dazzling_loki.sql']) {
+  const migration = await readFile(new URL(`../drizzle/${name}`, import.meta.url), 'utf8');
+  for (const statement of migration.split('--> statement-breakpoint').map(value => value.trim()).filter(Boolean)) DB.exec(statement);
+}
 const env = { DB, FILES: new R2Mock() };
 
 async function call(path, method = 'GET', body, headers = {}) {
@@ -65,6 +68,7 @@ const created = await call('/api/rooms', 'POST', { participantId: 'host-1', nick
 assert.equal(created.response.status, 200);
 assert.match(created.data.code, /^\d{6}$/);
 assert.ok(created.data.hostKey);
+assert.equal(created.data.hostParticipantId, 'host-1');
 
 const code = created.data.code;
 const joined = await call(`/api/rooms/${code}/join`, 'POST', { participantId: 'guest-1', nickname: '嘉宾' });
@@ -110,6 +114,27 @@ const image = await call(uploaded.data.url);
 assert.equal(image.response.status, 200);
 assert.equal(image.response.headers.get('content-type'), 'image/png');
 
+const transferred = await call(`/api/rooms/${code}/transfer`, 'POST', {
+  hostKey: created.data.hostKey,
+  targetParticipantId: 'guest-1',
+});
+assert.equal(transferred.response.status, 200);
+assert.equal(transferred.data.hostParticipantId, 'guest-1');
+
+const claimed = await call(`/api/rooms/${code}/claim-host`, 'POST', { participantId: 'guest-1' });
+assert.equal(claimed.response.status, 200);
+assert.ok(claimed.data.hostKey);
+
+const oldHostDenied = await call(`/api/rooms/${code}/dissolve`, 'POST', { hostKey: created.data.hostKey });
+assert.equal(oldHostDenied.response.status, 403);
+
+const dissolved = await call(`/api/rooms/${code}/dissolve`, 'POST', { hostKey: claimed.data.hostKey });
+assert.equal(dissolved.response.status, 200);
+assert.equal(dissolved.data.dissolved, true);
+const dissolvedRoom = await call(`/api/rooms/${code}`);
+assert.equal(dissolvedRoom.response.status, 404);
+assert.equal(env.FILES.objects.size, 0);
+
 const page = await worker.fetch(new Request('https://example.test/'), env);
 assert.equal(page.status, 200);
 const pageHtml = await page.text();
@@ -121,5 +146,7 @@ assert.match(pageHtml, /updateRoomAddress\(data\.code\)/);
 assert.match(pageHtml, /setTimeout\(pollRoom, 100\)/);
 assert.match(pageHtml, /mapWithConcurrency\(files, state\.room \? 4 : 12/);
 assert.match(pageHtml, /optimizeImageForUpload/);
+assert.match(pageHtml, /房主不能直接退出/);
+assert.match(pageHtml, /transferRoomAndLeave/);
 
 console.log('Worker collaboration tests passed');
