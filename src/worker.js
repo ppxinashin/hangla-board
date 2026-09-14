@@ -4,7 +4,8 @@ const JSON_HEADERS = {
   'content-type': 'application/json; charset=utf-8',
   'cache-control': 'no-store',
 };
-const ROOM_CODE_PATTERN = /^\d{6}$/;
+const ROOM_CODE_PATTERN = /^[A-Z0-9]{8}$/;
+const ROOM_CODE_ALPHABET = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
 const IMAGE_TYPES = new Set(['image/png', 'image/jpeg', 'image/webp', 'image/gif']);
 const MAX_IMAGE_BYTES = 8 * 1024 * 1024;
 
@@ -12,10 +13,10 @@ function json(data, status = 200) {
   return new Response(JSON.stringify(data), { status, headers: JSON_HEADERS });
 }
 
-function randomDigits() {
-  const bytes = new Uint8Array(6);
+function randomRoomCode() {
+  const bytes = new Uint8Array(8);
   crypto.getRandomValues(bytes);
-  return [...bytes].map(value => value % 10).join('');
+  return [...bytes].map(value => ROOM_CODE_ALPHABET[value % ROOM_CODE_ALPHABET.length]).join('');
 }
 
 function cleanName(value, fallback = '参与者') {
@@ -24,7 +25,7 @@ function cleanName(value, fallback = '参与者') {
 }
 
 function cleanRoomCode(value) {
-  const code = String(value || '').replace(/\D/g, '').slice(0, 6);
+  const code = String(value || '').toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 8);
   return ROOM_CODE_PATTERN.test(code) ? code : null;
 }
 
@@ -111,7 +112,7 @@ async function createRoom(request, env) {
   const now = Date.now();
 
   for (let attempt = 0; attempt < 12; attempt += 1) {
-    const code = randomDigits();
+    const code = randomRoomCode();
     try {
       await env.DB.prepare(
         `INSERT INTO rooms (code, host_key, host_participant_id, state_json, version, finalized, created_at, updated_at)
@@ -300,7 +301,7 @@ async function handleApi(request, env, url) {
   if (parts.length === 2 && request.method === 'POST') return createRoom(request, env);
 
   const code = cleanRoomCode(parts[2]);
-  if (!code) return json({ error: '房间号应为 6 位数字' }, 400);
+  if (!code) return json({ error: '房间号应为 8 位字母或数字' }, 400);
   if (parts.length === 3 && request.method === 'GET') return readRoomState(env, code, url);
   if (parts[3] === 'join' && request.method === 'POST') return joinRoom(request, env, code);
   if (parts[3] === 'presence' && request.method === 'POST') return presence(request, env, code);
