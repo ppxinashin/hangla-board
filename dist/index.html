@@ -83,7 +83,10 @@
     .workspace { width: min(1500px, 100%); margin: 0 auto; padding: 24px; flex: 1; }
 
     .board-header { display: flex; align-items: end; justify-content: space-between; gap: 20px; margin-bottom: 14px; }
-    .board-header h2 { font-size: clamp(1.35rem, 2vw, 2rem); line-height: 1.1; margin: 0 0 6px; }
+    .board-title { display: block; width: min(720px, 80vw); margin: 0 0 6px; padding: 2px 0 5px; border: 0; border-bottom: 2px solid transparent; background: transparent; color: var(--text); font-size: clamp(1.35rem, 2vw, 2rem); line-height: 1.1; font-weight: 800; }
+    .board-title:hover { border-bottom-color: var(--line); }
+    .board-title:focus { border-bottom-color: var(--accent); outline: 0; }
+    .board-title::placeholder { color: #6f7782; }
     .board-header p { color: var(--muted); margin: 0; font-size: .9rem; }
 
     .board {
@@ -238,7 +241,7 @@
 
     <main class="workspace">
       <div class="board-header">
-        <div><h2>这期怎么排？</h2><p>拖动图片进档位，点击档名可以直接修改。</p></div>
+        <div><input id="boardTitle" class="board-title" type="text" value="这期怎么排？" maxlength="80" aria-label="排序标题" title="点击修改排序标题"><p>点击标题可以改名；拖动图片进档位，点击档名可以直接修改。</p></div>
       </div>
       <section id="board" class="board" aria-label="分档看板"></section>
 
@@ -264,6 +267,7 @@
         ember: ['#ef4444', '#f97316', '#facc15', '#fde68a', '#f8fafc']
       };
       const state = {
+        title: '这期怎么排？',
         theme: 'rainbow',
         tiers: [
           { id: crypto.randomUUID(), name: '夯', items: [] },
@@ -503,6 +507,16 @@
         ctx.closePath();
       }
 
+      function drawFittedText(ctx, text, x, y, maxWidth, maxSize = 34, minSize = 20) {
+        let size = maxSize;
+        do {
+          ctx.font = `900 ${size}px Inter, "PingFang SC", "Microsoft YaHei", sans-serif`;
+          if (ctx.measureText(text).width <= maxWidth) break;
+          size -= 1;
+        } while (size > minSize);
+        ctx.fillText(text, x, y, maxWidth);
+      }
+
       function drawCoverImage(ctx, image, x, y, size) {
         const sourceRatio = image.naturalWidth / image.naturalHeight;
         let sourceWidth = image.naturalWidth;
@@ -557,6 +571,7 @@
         const exportButton = document.querySelector('#exportBtn');
         const rankedIds = state.tiers.flatMap(tier => tier.items);
         if (!rankedIds.length) return say('请先将至少一张图片放入档位');
+        const exportTitle = state.title.trim() || '未命名排序';
 
         exportButton.disabled = true;
         exportButton.setAttribute('aria-busy', 'true');
@@ -608,12 +623,11 @@
           ctx.fillText('夯', outerPadding + 29, 72);
 
           ctx.fillStyle = '#f5f6f7';
-          ctx.font = '900 34px Inter, "PingFang SC", sans-serif';
           ctx.textAlign = 'left';
-          ctx.fillText('夯拉板', outerPadding + 78, 61);
+          drawFittedText(ctx, exportTitle, outerPadding + 78, 61, canvasWidth - outerPadding * 2 - 350);
           ctx.fillStyle = '#9aa3ae';
           ctx.font = '500 20px Inter, "PingFang SC", sans-serif';
-          ctx.fillText('这期怎么排？', outerPadding + 78, 91);
+          ctx.fillText('夯拉板 · 分档结果', outerPadding + 78, 91);
           ctx.textAlign = 'right';
           ctx.fillText(state.theme === 'rainbow' ? '彩虹色主题' : '红橙黄白主题', canvasWidth - outerPadding, 74);
 
@@ -667,7 +681,8 @@
           const downloadUrl = URL.createObjectURL(blob);
           const link = document.createElement('a');
           link.href = downloadUrl;
-          link.download = `夯拉板-${new Date().toISOString().slice(0, 10)}.png`;
+          const safeTitle = exportTitle.replace(/[\\/:*?"<>|]/g, '').replace(/\s+/g, ' ').trim().slice(0, 80) || '未命名排序';
+          link.download = `${safeTitle}.png`;
           document.body.appendChild(link);
           link.click();
           link.remove();
@@ -694,6 +709,7 @@
       }
 
       document.querySelector('#addTierBtn').addEventListener('click', () => addTier());
+      document.querySelector('#boardTitle').addEventListener('input', event => { state.title = event.target.value; });
       document.querySelector('#themeSelect').addEventListener('change', event => applyTheme(event.target.value));
       document.querySelector('#uploadBtn').addEventListener('click', () => fileInput.click());
       document.querySelector('#bankUploadBtn').addEventListener('click', () => fileInput.click());
