@@ -14,6 +14,7 @@ A lightweight Tier List board for video creators. It has no build step or third-
 - Colors are locked to row positions rather than moving with tier contents
 - Rainbow and red–orange–yellow–white tier themes
 - Export the finished tier list as a high-resolution PNG
+- Name each ranking and use that title for the exported PNG filename
 - Clean recording mode that hides editing controls while keeping the unranked tray usable
 - Press `Esc` to leave recording mode
 - Images are processed in the current browser page and are not uploaded to a server
@@ -39,9 +40,10 @@ Then visit `http://localhost:4173`.
 2. Drag unranked images into a tier.
 3. Select a tier label to rename it.
 4. Use the handle on the right to reorder an entire tier row.
-5. Choose a color theme from the top bar.
-6. Select **导出图片** to download the final board as a clean PNG without editing controls.
-7. Select **干净录制** to start a clean recording view. Ranking remains interactive while recording.
+5. Select the board title to name the ranking.
+6. Choose a color theme from the top bar.
+7. Select **导出图片** to download the final board as a clean PNG. Its heading and filename use the ranking title.
+8. Select **干净录制** to start a clean recording view. Ranking remains interactive while recording.
 
 ## Current limitations
 
