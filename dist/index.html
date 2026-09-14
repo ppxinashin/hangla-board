@@ -354,6 +354,7 @@
       let externalDragDepth = 0;
       let roomSyncTimer;
       let roomPollTimer;
+      let roomPresenceTimer;
       let syncInFlight = false;
       let syncQueued = false;
 
@@ -477,7 +478,7 @@
         document.querySelector('#boardTitle').readOnly = Boolean(state.room.finalized);
       }
 
-      function scheduleRoomSync(delay = 320) {
+      function scheduleRoomSync(delay = 80) {
         if (!state.room || state.room.syncPaused || state.room.finalized || state.applyingRemote) return;
         clearTimeout(roomSyncTimer);
         roomSyncTimer = setTimeout(pushRoomState, delay);
@@ -516,7 +517,7 @@
           syncInFlight = false;
           if (syncQueued) {
             syncQueued = false;
-            scheduleRoomSync(500);
+            scheduleRoomSync(220);
           }
         }
       }
@@ -525,21 +526,34 @@
         clearTimeout(roomPollTimer);
         if (!state.room) return;
         try {
-          const data = await requestJson(`/api/rooms/${state.room.code}/presence`, {
-            method: 'POST',
-            headers: { 'content-type': 'application/json' },
-            body: JSON.stringify({ participantId: state.room.participantId, nickname: state.room.nickname })
-          });
+          const data = await requestJson(`/api/rooms/${state.room.code}?since=${state.room.version}`);
           if (!syncInFlight && data.version > state.room.version && data.state) applyRemoteBoard(data.state);
           updateRoomUi(data);
         } catch (error) {
           if (error.status === 404) leaveRoom(false, '房间已失效');
         }
-        if (state.room) roomPollTimer = setTimeout(pollRoom, 1800);
+        if (state.room) roomPollTimer = setTimeout(pollRoom, 100);
+      }
+
+      async function keepRoomPresence() {
+        clearTimeout(roomPresenceTimer);
+        if (!state.room) return;
+        try {
+          const data = await requestJson(`/api/rooms/${state.room.code}/presence`, {
+            method: 'POST',
+            headers: { 'content-type': 'application/json' },
+            body: JSON.stringify({ participantId: state.room.participantId, nickname: state.room.nickname })
+          });
+          updateRoomUi(data);
+        } catch (error) {
+          if (error.status === 404) leaveRoom(false, '房间已失效');
+        }
+        if (state.room) roomPresenceTimer = setTimeout(keepRoomPresence, 8000);
       }
 
       function beginRoom(data, nickname, hostKey = null, applyState = true) {
         clearTimeout(roomPollTimer);
+        clearTimeout(roomPresenceTimer);
         state.room = {
           code: data.code,
           participantId: data.participantId,
@@ -555,13 +569,15 @@
         updateRoomUi(data);
         saveRoomSession();
         closeRoomModal();
-        roomPollTimer = setTimeout(pollRoom, 900);
+        roomPollTimer = setTimeout(pollRoom, 250);
+        roomPresenceTimer = setTimeout(keepRoomPresence, 6000);
       }
 
       function leaveRoom(confirmFirst = true, message = '已退出联机房间') {
         if (confirmFirst && !confirm('退出房间后会保留当前画面，但不再同步其他人的调整。确定退出吗？')) return;
         clearTimeout(roomSyncTimer);
         clearTimeout(roomPollTimer);
+        clearTimeout(roomPresenceTimer);
         state.room = null;
         updateRoomAddress();
         syncInFlight = false;
@@ -586,11 +602,42 @@
         roomModal.setAttribute('aria-hidden', 'true');
       }
 
+      async function mapWithConcurrency(entries, limit, worker) {
+        const results = new Array(entries.length);
+        let nextIndex = 0;
+        async function run() {
+          while (nextIndex < entries.length) {
+            const index = nextIndex++;
+            results[index] = await worker(entries[index], index);
+          }
+        }
+        await Promise.all(Array.from({ length: Math.min(limit, entries.length) }, run));
+        return results;
+      }
+
+      async function optimizeImageForUpload(blob) {
+        if (!['image/jpeg', 'image/png', 'image/webp'].includes(blob.type) || blob.size < 900000) return blob;
+        try {
+          const bitmap = await createImageBitmap(blob);
+          const scale = Math.min(1, 1600 / Math.max(bitmap.width, bitmap.height));
+          const canvas = document.createElement('canvas');
+          canvas.width = Math.max(1, Math.round(bitmap.width * scale));
+          canvas.height = Math.max(1, Math.round(bitmap.height * scale));
+          canvas.getContext('2d').drawImage(bitmap, 0, 0, canvas.width, canvas.height);
+          bitmap.close();
+          const optimized = await new Promise(resolve => canvas.toBlob(resolve, 'image/webp', .86));
+          return optimized && optimized.size < blob.size ? optimized : blob;
+        } catch (_) {
+          return blob;
+        }
+      }
+
       async function uploadBlobToRoom(blob, name) {
+        const uploadBlob = await optimizeImageForUpload(blob);
         const response = await requestJson(`/api/rooms/${state.room.code}/images`, {
           method: 'POST',
-          headers: { 'content-type': blob.type, 'x-file-name': encodeURIComponent(name) },
-          body: blob
+          headers: { 'content-type': uploadBlob.type, 'x-file-name': encodeURIComponent(name) },
+          body: uploadBlob
         });
         return response;
       }
@@ -611,7 +658,7 @@
           beginRoom(data, nickname, data.hostKey, false);
           state.room.syncPaused = true;
           const failed = [];
-          for (const item of state.items.values()) {
+          await mapWithConcurrency([...state.items.values()], 4, async item => {
             try {
               const blob = await fetch(item.url).then(response => response.blob());
               const uploaded = await uploadBlobToRoom(blob, item.name);
@@ -621,7 +668,7 @@
             } catch (_) {
               failed.push(item.id);
             }
-          }
+          });
           failed.forEach(id => {
             const location = locateItem(id);
             if (location) location.list.splice(location.list.indexOf(id), 1);
@@ -825,7 +872,7 @@
           input.addEventListener('input', () => {
             if (!canEdit()) return;
             tier.name = input.value;
-            scheduleRoomSync(480);
+            scheduleRoomSync(100);
           });
           row.querySelector('.delete-tier').addEventListener('click', () => deleteTier(tier.id));
           const dragHandle = row.querySelector('.drag-tier');
@@ -916,8 +963,8 @@
         if (!canEdit()) return;
         const files = [...fileList].filter(file => file.type.startsWith('image/'));
         if (!files.length) return say('请选择图片文件');
-        let added = 0;
-        for (const file of files) {
+        if (state.room) say(`正在上传 ${files.length} 张图片…`);
+        const results = await mapWithConcurrency(files, state.room ? 4 : 12, async file => {
           const id = crypto.randomUUID();
           const name = file.name.replace(/\.[^.]+$/, '');
           try {
@@ -927,12 +974,15 @@
             } else {
               state.items.set(id, { id, name, url: URL.createObjectURL(file), remoteId: null });
             }
-            state.bank.push(id);
-            added += 1;
+            return id;
           } catch (error) {
             console.error(error);
+            return null;
           }
-        }
+        });
+        const successfulIds = results.filter(Boolean);
+        state.bank.push(...successfulIds);
+        const added = successfulIds.length;
         render();
         say(added === files.length ? `已添加 ${added} 张图片` : `已添加 ${added} 张，${files.length - added} 张失败`);
       }
@@ -1153,7 +1203,7 @@
       document.querySelector('#boardTitle').addEventListener('input', event => {
         if (!canEdit()) return;
         state.title = event.target.value;
-        scheduleRoomSync(480);
+        scheduleRoomSync(100);
       });
       document.querySelector('#themeSelect').addEventListener('change', event => applyTheme(event.target.value));
       document.querySelector('#uploadBtn').addEventListener('click', () => fileInput.click());
