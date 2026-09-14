@@ -46,6 +46,7 @@
 
     button:hover { border-color: #4b5563; background: #20252d; }
     button:active { transform: translateY(1px); }
+    button:disabled { cursor: wait; opacity: .58; transform: none; }
     button:focus-visible, input:focus-visible { outline: 3px solid rgba(234,255,91,.38); outline-offset: 2px; }
 
     .primary { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); font-weight: 800; }
@@ -230,6 +231,7 @@
         <label class="theme-control"><span>主题</span><select id="themeSelect" aria-label="档位颜色主题"><option value="rainbow">彩虹色</option><option value="ember">红橙黄白</option></select></label>
         <button id="addTierBtn" type="button" title="增加一个档位"><span class="button-icon">＋</span><span class="button-label">加一档</span></button>
         <button id="uploadBtn" type="button" class="primary" title="批量上传图片"><span class="button-icon">↑</span><span class="button-label">上传图片</span></button>
+        <button id="exportBtn" type="button" title="将当前分档结果导出为 PNG 图片"><span class="button-icon">⇩</span><span class="button-label">导出图片</span></button>
         <button id="recordBtn" type="button" title="隐藏控件并进入全屏"><span class="button-icon">●</span><span class="button-label">干净录制</span></button>
       </div>
     </header>
@@ -490,6 +492,197 @@
         say(`已添加 ${files.length} 张图片`);
       }
 
+      function roundedRect(ctx, x, y, width, height, radius) {
+        const r = Math.min(radius, width / 2, height / 2);
+        ctx.beginPath();
+        ctx.moveTo(x + r, y);
+        ctx.arcTo(x + width, y, x + width, y + height, r);
+        ctx.arcTo(x + width, y + height, x, y + height, r);
+        ctx.arcTo(x, y + height, x, y, r);
+        ctx.arcTo(x, y, x + width, y, r);
+        ctx.closePath();
+      }
+
+      function drawCoverImage(ctx, image, x, y, size) {
+        const sourceRatio = image.naturalWidth / image.naturalHeight;
+        let sourceWidth = image.naturalWidth;
+        let sourceHeight = image.naturalHeight;
+        let sourceX = 0;
+        let sourceY = 0;
+        if (sourceRatio > 1) {
+          sourceWidth = image.naturalHeight;
+          sourceX = (image.naturalWidth - sourceWidth) / 2;
+        } else {
+          sourceHeight = image.naturalWidth;
+          sourceY = (image.naturalHeight - sourceHeight) / 2;
+        }
+        ctx.save();
+        roundedRect(ctx, x, y, size, size, 10);
+        ctx.clip();
+        ctx.drawImage(image, sourceX, sourceY, sourceWidth, sourceHeight, x, y, size, size);
+        ctx.restore();
+        ctx.strokeStyle = 'rgba(255,255,255,.18)';
+        ctx.lineWidth = 2;
+        roundedRect(ctx, x, y, size, size, 10);
+        ctx.stroke();
+      }
+
+      function loadExportImage(url) {
+        return new Promise(resolve => {
+          const image = new Image();
+          image.onload = () => resolve(image);
+          image.onerror = () => resolve(null);
+          image.src = url;
+        });
+      }
+
+      function drawTierLabel(ctx, name, x, y, width, height) {
+        const value = (name || '未命名').trim() || '未命名';
+        const maxChars = 7;
+        const lines = [];
+        for (let index = 0; index < value.length; index += maxChars) lines.push(value.slice(index, index + maxChars));
+        const visibleLines = lines.slice(0, 3);
+        if (lines.length > 3) visibleLines[2] = `${visibleLines[2].slice(0, Math.max(1, maxChars - 1))}…`;
+        const fontSize = visibleLines.length > 2 ? 23 : 27;
+        const lineHeight = fontSize * 1.24;
+        const startY = y + height / 2 - ((visibleLines.length - 1) * lineHeight) / 2;
+        ctx.fillStyle = '#151515';
+        ctx.font = `900 ${fontSize}px Inter, "PingFang SC", "Microsoft YaHei", sans-serif`;
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        visibleLines.forEach((line, index) => ctx.fillText(line, x + width / 2, startY + index * lineHeight, width - 24));
+      }
+
+      async function exportBoard() {
+        const exportButton = document.querySelector('#exportBtn');
+        const rankedIds = state.tiers.flatMap(tier => tier.items);
+        if (!rankedIds.length) return say('请先将至少一张图片放入档位');
+
+        exportButton.disabled = true;
+        exportButton.setAttribute('aria-busy', 'true');
+        const originalLabel = exportButton.querySelector('.button-label').textContent;
+        exportButton.querySelector('.button-label').textContent = '生成中';
+
+        try {
+          await document.fonts?.ready;
+          const loadedEntries = await Promise.all(rankedIds.map(async id => {
+            const item = state.items.get(id);
+            return [id, item ? await loadExportImage(item.url) : null];
+          }));
+          const loadedImages = new Map(loadedEntries);
+
+          const canvasWidth = 1600;
+          const outerPadding = 44;
+          const headerHeight = 146;
+          const footerHeight = 74;
+          const labelWidth = 190;
+          const tileSize = 116;
+          const gap = 12;
+          const rowPadding = 18;
+          const boardWidth = canvasWidth - outerPadding * 2;
+          const contentWidth = boardWidth - labelWidth;
+          const perRow = Math.max(1, Math.floor((contentWidth - rowPadding * 2 + gap) / (tileSize + gap)));
+          const rowHeights = state.tiers.map(tier => {
+            const imageRows = Math.max(1, Math.ceil(tier.items.length / perRow));
+            return Math.max(154, rowPadding * 2 + imageRows * tileSize + (imageRows - 1) * gap);
+          });
+          const canvasHeight = headerHeight + rowHeights.reduce((sum, height) => sum + height, 0) + footerHeight;
+          const targetPixels = 26000000;
+          const scale = Math.min(2, Math.max(.65, Math.sqrt(targetPixels / (canvasWidth * canvasHeight))));
+          const canvas = document.createElement('canvas');
+          canvas.width = Math.round(canvasWidth * scale);
+          canvas.height = Math.round(canvasHeight * scale);
+          const ctx = canvas.getContext('2d');
+          ctx.scale(scale, scale);
+
+          ctx.fillStyle = '#0b0d10';
+          ctx.fillRect(0, 0, canvasWidth, canvasHeight);
+
+          ctx.fillStyle = '#eaff5b';
+          roundedRect(ctx, outerPadding, 42, 58, 58, 14);
+          ctx.fill();
+          ctx.fillStyle = '#151800';
+          ctx.font = '1000 31px Inter, "PingFang SC", sans-serif';
+          ctx.textAlign = 'center';
+          ctx.textBaseline = 'middle';
+          ctx.fillText('夯', outerPadding + 29, 72);
+
+          ctx.fillStyle = '#f5f6f7';
+          ctx.font = '900 34px Inter, "PingFang SC", sans-serif';
+          ctx.textAlign = 'left';
+          ctx.fillText('夯拉板', outerPadding + 78, 61);
+          ctx.fillStyle = '#9aa3ae';
+          ctx.font = '500 20px Inter, "PingFang SC", sans-serif';
+          ctx.fillText('这期怎么排？', outerPadding + 78, 91);
+          ctx.textAlign = 'right';
+          ctx.fillText(state.theme === 'rainbow' ? '彩虹色主题' : '红橙黄白主题', canvasWidth - outerPadding, 74);
+
+          let rowY = headerHeight;
+          state.tiers.forEach((tier, tierIndex) => {
+            const rowHeight = rowHeights[tierIndex];
+            ctx.fillStyle = themeColorAt(tierIndex);
+            ctx.fillRect(outerPadding, rowY, labelWidth, rowHeight);
+            ctx.fillStyle = '#15191f';
+            ctx.fillRect(outerPadding + labelWidth, rowY, contentWidth, rowHeight);
+            drawTierLabel(ctx, tier.name, outerPadding, rowY, labelWidth, rowHeight);
+
+            tier.items.forEach((id, itemIndex) => {
+              const column = itemIndex % perRow;
+              const imageRow = Math.floor(itemIndex / perRow);
+              const x = outerPadding + labelWidth + rowPadding + column * (tileSize + gap);
+              const y = rowY + rowPadding + imageRow * (tileSize + gap);
+              const image = loadedImages.get(id);
+              if (image) {
+                drawCoverImage(ctx, image, x, y, tileSize);
+              } else {
+                ctx.fillStyle = '#2a3039';
+                roundedRect(ctx, x, y, tileSize, tileSize, 10);
+                ctx.fill();
+              }
+            });
+
+            ctx.strokeStyle = '#2a3039';
+            ctx.lineWidth = 2;
+            ctx.beginPath();
+            ctx.moveTo(outerPadding, rowY + rowHeight);
+            ctx.lineTo(canvasWidth - outerPadding, rowY + rowHeight);
+            ctx.stroke();
+            rowY += rowHeight;
+          });
+
+          ctx.strokeStyle = '#343b45';
+          ctx.lineWidth = 2;
+          ctx.strokeRect(outerPadding, headerHeight, boardWidth, rowY - headerHeight);
+
+          ctx.fillStyle = '#9aa3ae';
+          ctx.font = '500 18px Inter, "PingFang SC", sans-serif';
+          ctx.textBaseline = 'middle';
+          ctx.textAlign = 'left';
+          ctx.fillText(`共 ${rankedIds.length} 张 · ${state.tiers.length} 个档位`, outerPadding, rowY + footerHeight / 2);
+          ctx.textAlign = 'right';
+          ctx.fillText('由夯拉板生成', canvasWidth - outerPadding, rowY + footerHeight / 2);
+
+          const blob = await new Promise(resolve => canvas.toBlob(resolve, 'image/png'));
+          if (!blob) throw new Error('无法生成图片');
+          const downloadUrl = URL.createObjectURL(blob);
+          const link = document.createElement('a');
+          link.href = downloadUrl;
+          link.download = `夯拉板-${new Date().toISOString().slice(0, 10)}.png`;
+          document.body.appendChild(link);
+          link.click();
+          link.remove();
+          setTimeout(() => URL.revokeObjectURL(downloadUrl), 1000);
+          say(state.bank.length ? `已导出，待分档的 ${state.bank.length} 张未包含` : '分档结果已导出为 PNG');
+        } catch (error) {
+          console.error(error);
+          say('导出失败，请稍后重试');
+        } finally {
+          exportButton.disabled = false;
+          exportButton.removeAttribute('aria-busy');
+          exportButton.querySelector('.button-label').textContent = originalLabel;
+        }
+      }
+
       async function toggleRecording(force) {
         const entering = typeof force === 'boolean' ? force : !document.body.classList.contains('recording');
         document.body.classList.toggle('recording', entering);
@@ -504,6 +697,7 @@
       document.querySelector('#themeSelect').addEventListener('change', event => applyTheme(event.target.value));
       document.querySelector('#uploadBtn').addEventListener('click', () => fileInput.click());
       document.querySelector('#bankUploadBtn').addEventListener('click', () => fileInput.click());
+      document.querySelector('#exportBtn').addEventListener('click', exportBoard);
       document.querySelector('#recordBtn').addEventListener('click', () => toggleRecording(true));
       fileInput.addEventListener('change', () => { addFiles(fileInput.files); fileInput.value = ''; });
 
