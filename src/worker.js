@@ -134,6 +134,23 @@ async function joinRoom(request, env, code) {
   return json({ ...(await roomPayload(env, room)), participantId: participant.id });
 }
 
+async function readRoomState(env, code, url) {
+  const room = await getRoom(env, code);
+  if (!room) return json({ error: '房间不存在或已失效' }, 404);
+  const version = Number(room.version);
+  const sinceValue = url.searchParams.get('since');
+  const since = sinceValue === null ? Number.NaN : Number(sinceValue);
+  const payload = {
+    code: room.code,
+    version,
+    finalized: Boolean(room.finalized),
+    participants: await activeParticipants(env, room.code),
+    updatedAt: Number(room.updated_at),
+  };
+  if (!Number.isInteger(since) || since !== version) payload.state = JSON.parse(room.state_json);
+  return json(payload);
+}
+
 async function presence(request, env, code) {
   const room = await getRoom(env, code);
   if (!room) return json({ error: '房间不存在或已失效' }, 404);
@@ -233,6 +250,7 @@ async function handleApi(request, env, url) {
 
   const code = cleanRoomCode(parts[2]);
   if (!code) return json({ error: '房间号应为 6 位数字' }, 400);
+  if (parts.length === 3 && request.method === 'GET') return readRoomState(env, code, url);
   if (parts[3] === 'join' && request.method === 'POST') return joinRoom(request, env, code);
   if (parts[3] === 'presence' && request.method === 'POST') return presence(request, env, code);
   if (parts[3] === 'sync' && request.method === 'PUT') return syncRoom(request, env, code);
