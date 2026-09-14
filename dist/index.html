@@ -23,6 +23,7 @@
     }
 
     * { box-sizing: border-box; }
+    [hidden] { display: none !important; }
 
     html, body { margin: 0; min-height: 100%; background: var(--bg); color: var(--text); }
 
@@ -406,7 +407,20 @@
       }
 
       async function requestJson(url, options = {}) {
-        const response = await fetch(url, options);
+        let response;
+        for (let attempt = 0; attempt < 2; attempt += 1) {
+          try {
+            response = await fetch(url, options);
+            break;
+          } catch (error) {
+            if (attempt === 1) {
+              const networkError = new Error('网络连接失败，请稍后重试');
+              networkError.cause = error;
+              throw networkError;
+            }
+            await new Promise(resolve => setTimeout(resolve, 450));
+          }
+        }
         let data;
         try { data = await response.json(); } catch (_) { data = { error: '服务器返回异常' }; }
         if (!response.ok) {
@@ -426,6 +440,13 @@
           nickname: state.room.nickname,
           hostKey: state.room.hostKey || null
         }));
+      }
+
+      function updateRoomAddress(code = null) {
+        const url = new URL(location.href);
+        if (code) url.searchParams.set('room', code);
+        else url.searchParams.delete('room');
+        history.replaceState(null, '', `${url.pathname}${url.search}${url.hash}`);
       }
 
       function updateRoomUi(payload = {}) {
@@ -529,6 +550,7 @@
           participants: data.participants || [],
           syncPaused: false
         };
+        updateRoomAddress(data.code);
         if (applyState) applyRemoteBoard(data.state);
         updateRoomUi(data);
         saveRoomSession();
@@ -541,6 +563,7 @@
         clearTimeout(roomSyncTimer);
         clearTimeout(roomPollTimer);
         state.room = null;
+        updateRoomAddress();
         syncInFlight = false;
         syncQueued = false;
         saveRoomSession();
