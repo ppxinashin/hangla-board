@@ -1,8 +1,10 @@
 # 夯拉板（Hangla Board）
 
-[中文](README.md) · [English](README_EN.md) · [日本語](README_JA.md)
+[中文](README.md) · [English](README_EN.md) · [日本語](README_JA.md) · [Wiki（中国語）](https://github.com/ppxinashin/hangla-board/wiki)
 
 動画クリエイター向けの Tier List（ランク表）ツールです。単独でのランク分け、クリーン録画、PNG 出力に加え、リモート出演者と使える共同編集ルームに対応します。
+
+**オンライン版：[tier.jehol-ppx.com](https://tier.jehol-ppx.com/)**
 
 ## 機能
 
@@ -24,20 +26,19 @@
 
 ## クイックスタート
 
-単独モードは `dist/index.html` を直接開いて利用できます。共同編集ルームには、データベースと画像ストレージを備えた Sites 環境へのデプロイが必要です。
-
-1. リポジトリをダウンロード、またはクローンします。
-2. ブラウザで `dist/index.html` を開きます。
-
-開発とビルド：
+自分のパソコンで完全版を動かすには、Node.js 22.5 以上と Git をインストールします。
 
 ```bash
-npm install
-npm run db:generate
-npm test
+git clone https://github.com/ppxinashin/hangla-board.git
+cd hangla-board
+npm ci
+npm run build
+npm run start:node
 ```
 
-`npm run build` でデプロイ用 Worker が生成されます。
+ブラウザで `http://127.0.0.1:3000` を開きます。ルーム情報とアップロード画像はローカルの `.data` フォルダーに保存されます。単独モードだけを使う場合は、ビルド後に `dist/index.html` を直接開くこともできます。
+
+詳しい手順は中国語 Wiki の[ローカル導入](https://github.com/ppxinashin/hangla-board/wiki/本地部署)と[Linux サーバー導入](https://github.com/ppxinashin/hangla-board/wiki/服务器部署)を参照してください。
 
 ## 使い方
 
@@ -65,9 +66,12 @@ npm test
 ```text
 dist/index.html   ブラウザインターフェース
 src/worker.js     ルーム・同期・画像 API
+server/node.mjs   ローカル・Linux サーバー実行環境
 db/schema.ts      ルームデータ構造
 drizzle/          データベース移行
+deploy/           systemd・Nginx 設定例
 scripts/          ビルド・共同編集テスト
+wiki/             GitHub Wiki のソースページ
 README.md         中国語ドキュメント
 README_EN.md      英語ドキュメント
 README_JA.md      日本語ドキュメント

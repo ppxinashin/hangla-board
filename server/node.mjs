@@ -133,10 +133,11 @@ export async function createAppServer({ dataDir = join(projectRoot, '.data') } =
 const isMain = process.argv[1] && pathToFileURL(process.argv[1]).href === import.meta.url;
 if (isMain) {
   const port = Number(process.env.PORT || 3000);
-  const dataDir = process.env.DATA_DIR || '/var/lib/tier-board';
+  const host = process.env.HOST || '127.0.0.1';
+  const dataDir = process.env.DATA_DIR || join(projectRoot, '.data');
   if (!existsSync(join(projectRoot, 'dist', 'server', 'index.js'))) {
     throw new Error('请先运行 npm run build');
   }
   const server = await createAppServer({ dataDir });
-  server.listen(port, '127.0.0.1', () => console.log(`Tier board listening on 127.0.0.1:${port}`));
+  server.listen(port, host, () => console.log(`Tier board listening on ${host}:${port}`));
 }

@@ -1,8 +1,10 @@
 # Hangla Board
 
-[中文](README.md) · [English](README_EN.md) · [日本語](README_JA.md)
+[中文](README.md) · [English](README_EN.md) · [日本語](README_JA.md) · [Wiki (Chinese)](https://github.com/ppxinashin/hangla-board/wiki)
 
 A Tier List board for video creators, with solo ranking, clean recording, PNG export, and collaborative rooms for remote video guests.
+
+**Live app: [tier.jehol-ppx.com](https://tier.jehol-ppx.com/)**
 
 ## Features
 
@@ -24,20 +26,19 @@ A Tier List board for video creators, with solo ranking, clean recording, PNG ex
 
 ## Quick start
 
-For solo use, you can still open `dist/index.html` directly. Collaborative rooms require a Sites deployment with database and image storage.
-
-1. Download or clone the repository.
-2. Open `dist/index.html` in a browser.
-
-For development and builds:
+To run the complete app on your own computer, install Node.js 22.5 or newer and Git:
 
 ```bash
-npm install
-npm run db:generate
-npm test
+git clone https://github.com/ppxinashin/hangla-board.git
+cd hangla-board
+npm ci
+npm run build
+npm run start:node
 ```
 
-`npm run build` generates the deployable Worker.
+Open `http://127.0.0.1:3000`. Room data and uploaded images are stored in the local `.data` directory. If you only need solo ranking, you may open `dist/index.html` directly after building.
+
+See the Chinese Wiki for [local deployment](https://github.com/ppxinashin/hangla-board/wiki/本地部署) and [Linux server deployment](https://github.com/ppxinashin/hangla-board/wiki/服务器部署).
 
 ## Usage
 
@@ -65,9 +66,12 @@ npm test
 ```text
 dist/index.html   Browser interface
 src/worker.js     Room, synchronization, and image API
+server/node.mjs   Local and Linux server runtime
 db/schema.ts      Room data schema
 drizzle/          Database migrations
+deploy/           systemd and Nginx examples
 scripts/          Build and collaboration tests
+wiki/             GitHub Wiki source pages
 README.md         Chinese documentation
 README_EN.md      English documentation
 README_JA.md      Japanese documentation

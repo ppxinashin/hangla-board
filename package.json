@@ -3,10 +3,13 @@
   "version": "0.2.0",
   "private": true,
   "type": "module",
+  "engines": {
+    "node": ">=22.5"
+  },
   "scripts": {
     "build": "node scripts/build.mjs",
     "db:generate": "drizzle-kit generate",
-    "check": "node --check src/worker.js && node --check scripts/build.mjs",
+    "check": "node --check src/worker.js && node --check scripts/build.mjs && node --check server/node.mjs",
     "start:node": "node server/node.mjs",
     "test": "npm run build && node scripts/test-worker.mjs && node scripts/test-node-server.mjs"
   },
