@@ -63,7 +63,7 @@ async function readBody(request) {
 
 async function getRoom(env, code) {
   return env.DB.prepare(
-    'SELECT code, state_json, version, finalized, updated_at FROM rooms WHERE code = ?',
+    'SELECT code, host_participant_id, state_json, version, finalized, updated_at FROM rooms WHERE code = ?',
   ).bind(code).first();
 }
 
@@ -96,6 +96,7 @@ async function roomPayload(env, room) {
     state: JSON.parse(room.state_json),
     version: Number(room.version),
     finalized: Boolean(room.finalized),
+    hostParticipantId: room.host_participant_id || null,
     participants: await activeParticipants(env, room.code),
     updatedAt: Number(room.updated_at),
   };
@@ -113,9 +114,9 @@ async function createRoom(request, env) {
     const code = randomDigits();
     try {
       await env.DB.prepare(
-        `INSERT INTO rooms (code, host_key, state_json, version, finalized, created_at, updated_at)
-         VALUES (?, ?, ?, 0, 0, ?, ?)`,
-      ).bind(code, hostKey, JSON.stringify(state), now, now).run();
+        `INSERT INTO rooms (code, host_key, host_participant_id, state_json, version, finalized, created_at, updated_at)
+         VALUES (?, ?, ?, ?, 0, 0, ?, ?)`,
+      ).bind(code, hostKey, participantId, JSON.stringify(state), now, now).run();
       await touchParticipant(env, code, participantId, nickname);
       const room = await getRoom(env, code);
       return json({ ...(await roomPayload(env, room)), hostKey, participantId });
@@ -144,11 +145,61 @@ async function readRoomState(env, code, url) {
     code: room.code,
     version,
     finalized: Boolean(room.finalized),
+    hostParticipantId: room.host_participant_id || null,
     participants: await activeParticipants(env, room.code),
     updatedAt: Number(room.updated_at),
   };
   if (!Number.isInteger(since) || since !== version) payload.state = JSON.parse(room.state_json);
   return json(payload);
+}
+
+async function transferRoom(request, env, code) {
+  const body = await readBody(request);
+  const room = await env.DB.prepare(
+    'SELECT host_key, host_participant_id FROM rooms WHERE code = ?',
+  ).bind(code).first();
+  if (!room) return json({ error: '房间不存在或已失效' }, 404);
+  if (!body.hostKey || body.hostKey !== room.host_key) return json({ error: '只有房主可以转让房间' }, 403);
+  const targetParticipantId = String(body.targetParticipantId || '').slice(0, 80);
+  if (!targetParticipantId || targetParticipantId === room.host_participant_id) {
+    return json({ error: '请选择其他参与者接任房主' }, 400);
+  }
+  const target = await env.DB.prepare(
+    'SELECT id FROM participants WHERE id = ? AND room_code = ? AND last_seen >= ?',
+  ).bind(targetParticipantId, code, Date.now() - 30000).first();
+  if (!target) return json({ error: '接任者已不在房间，请重新选择' }, 404);
+  const nextHostKey = crypto.randomUUID() + crypto.randomUUID();
+  await env.DB.prepare(
+    'UPDATE rooms SET host_key = ?, host_participant_id = ?, updated_at = ? WHERE code = ?',
+  ).bind(nextHostKey, targetParticipantId, Date.now(), code).run();
+  if (room.host_participant_id) {
+    await env.DB.prepare('DELETE FROM participants WHERE id = ? AND room_code = ?')
+      .bind(room.host_participant_id, code).run();
+  }
+  const latest = await getRoom(env, code);
+  return json({ ...(await roomPayload(env, latest)), transferred: true });
+}
+
+async function claimRoomHost(request, env, code) {
+  const body = await readBody(request);
+  const participantId = String(body.participantId || '').slice(0, 80);
+  const room = await env.DB.prepare(
+    'SELECT host_key, host_participant_id FROM rooms WHERE code = ?',
+  ).bind(code).first();
+  if (!room) return json({ error: '房间不存在或已失效' }, 404);
+  if (!participantId || participantId !== room.host_participant_id) return json({ error: '当前参与者不是房主' }, 403);
+  return json({ hostKey: room.host_key, hostParticipantId: room.host_participant_id });
+}
+
+async function dissolveRoom(request, env, code) {
+  const body = await readBody(request);
+  const room = await env.DB.prepare('SELECT host_key FROM rooms WHERE code = ?').bind(code).first();
+  if (!room) return json({ error: '房间不存在或已失效' }, 404);
+  if (!body.hostKey || body.hostKey !== room.host_key) return json({ error: '只有房主可以解散房间' }, 403);
+  const images = await env.DB.prepare('SELECT object_key FROM room_images WHERE room_code = ?').bind(code).all();
+  await Promise.all((images.results || []).map(image => env.FILES.delete(image.object_key)));
+  await env.DB.prepare('DELETE FROM rooms WHERE code = ?').bind(code).run();
+  return json({ dissolved: true, code });
 }
 
 async function presence(request, env, code) {
@@ -255,6 +306,9 @@ async function handleApi(request, env, url) {
   if (parts[3] === 'presence' && request.method === 'POST') return presence(request, env, code);
   if (parts[3] === 'sync' && request.method === 'PUT') return syncRoom(request, env, code);
   if (parts[3] === 'finalize' && request.method === 'POST') return finalizeRoom(request, env, code);
+  if (parts[3] === 'transfer' && request.method === 'POST') return transferRoom(request, env, code);
+  if (parts[3] === 'claim-host' && request.method === 'POST') return claimRoomHost(request, env, code);
+  if (parts[3] === 'dissolve' && request.method === 'POST') return dissolveRoom(request, env, code);
   if (parts[3] === 'images' && request.method === 'POST') return uploadImage(request, env, code);
   return json({ error: '接口不存在' }, 404);
 }
