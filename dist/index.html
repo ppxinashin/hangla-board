@@ -102,12 +102,14 @@
     .room-form { display: grid; gap: 14px; padding: 8px 22px 24px; }
     .room-field { display: grid; gap: 7px; }
     .room-field label { color: #cdd3da; font-size: .86rem; font-weight: 700; }
-    .room-field input { width: 100%; min-height: 46px; padding: 0 13px; border: 1px solid #343c47; border-radius: 10px; background: #0d1014; color: var(--text); font-size: 1rem; }
+    .room-field input, .room-field select { width: 100%; min-height: 46px; padding: 0 13px; border: 1px solid #343c47; border-radius: 10px; background: #0d1014; color: var(--text); font-size: 1rem; }
     .room-field input.room-number { text-align: center; font-size: 1.3rem; font-weight: 900; letter-spacing: .2em; }
     .room-choice { display: grid; grid-template-columns: 1fr auto 1fr; align-items: end; gap: 13px; }
     .room-or { align-self: center; color: #68717d; font-size: .78rem; }
     .room-submit { width: 100%; }
     .room-note { padding-top: 3px; color: #7f8995 !important; font-size: .8rem !important; }
+    .host-exit-actions { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+    .danger-action { border-color: #773b3b; color: #ffd2d0; background: #361b1b; }
 
     .workspace { width: min(1500px, 100%); margin: 0 auto; padding: 24px; flex: 1; }
 
@@ -318,6 +320,23 @@
     </section>
   </div>
 
+  <div id="hostExitModal" class="room-modal" aria-hidden="true">
+    <section class="room-dialog" role="dialog" aria-modal="true" aria-labelledby="hostExitTitle">
+      <div class="room-dialog-header">
+        <div><h2 id="hostExitTitle">交接或解散房间</h2><p>房主不能直接退出。你可以转让给其他参与者，或者解散整个房间。</p></div>
+        <button id="hostExitCloseBtn" class="room-close" type="button" aria-label="关闭">×</button>
+      </div>
+      <div class="room-form">
+        <div id="transferField" class="room-field"><label for="transferTargetSelect">转让给</label><select id="transferTargetSelect"></select></div>
+        <div class="host-exit-actions">
+          <button id="transferRoomBtn" class="primary" type="button">转让并退出</button>
+          <button id="dissolveRoomBtn" class="danger-action" type="button">解散房间</button>
+        </div>
+        <p id="hostExitNote" class="room-note">解散后，所有参与者都会离开，房间链接立即失效。</p>
+      </div>
+    </section>
+  </div>
+
   <script>
     (() => {
       const THEMES = {
@@ -350,6 +369,7 @@
       const toast = document.querySelector('#toast');
       const roomModal = document.querySelector('#roomModal');
       const roomBar = document.querySelector('#roomBar');
+      const hostExitModal = document.querySelector('#hostExitModal');
       let toastTimer;
       let externalDragDepth = 0;
       let roomSyncTimer;
@@ -357,6 +377,7 @@
       let roomPresenceTimer;
       let syncInFlight = false;
       let syncQueued = false;
+      let hostClaimInFlight = false;
 
       function say(message) {
         toast.textContent = message;
@@ -459,6 +480,7 @@
         }
         if (typeof payload.version === 'number') state.room.version = payload.version;
         if (typeof payload.finalized === 'boolean') state.room.finalized = payload.finalized;
+        if ('hostParticipantId' in payload) state.room.hostParticipantId = payload.hostParticipantId;
         if (Array.isArray(payload.participants)) state.room.participants = payload.participants;
         roomBar.hidden = false;
         document.querySelector('#roomCode').textContent = state.room.code;
@@ -469,6 +491,7 @@
         const finalizeButton = document.querySelector('#finalizeBtn');
         finalizeButton.hidden = !state.room.hostKey;
         finalizeButton.textContent = state.room.finalized ? '解锁继续调整' : '锁定最终排名';
+        document.querySelector('#leaveRoomBtn').textContent = state.room.hostKey ? '交接 / 解散' : '退出房间';
         document.body.classList.toggle('room-finalized', Boolean(state.room.finalized));
         document.querySelector('#roomBtn .button-label').textContent = `房间 ${state.room.code}`;
         document.querySelector('#addTierBtn').disabled = Boolean(state.room.finalized);
@@ -476,6 +499,30 @@
         document.querySelector('#bankUploadBtn').disabled = Boolean(state.room.finalized);
         document.querySelector('#themeSelect').disabled = Boolean(state.room.finalized);
         document.querySelector('#boardTitle').readOnly = Boolean(state.room.finalized);
+        maybeClaimRoomHost();
+      }
+
+      async function maybeClaimRoomHost() {
+        if (!state.room || state.room.hostKey || hostClaimInFlight) return;
+        if (state.room.hostParticipantId !== state.room.participantId) return;
+        const roomCode = state.room.code;
+        hostClaimInFlight = true;
+        try {
+          const data = await requestJson(`/api/rooms/${roomCode}/claim-host`, {
+            method: 'POST',
+            headers: { 'content-type': 'application/json' },
+            body: JSON.stringify({ participantId: state.room.participantId })
+          });
+          if (!state.room || state.room.code !== roomCode) return;
+          state.room.hostKey = data.hostKey;
+          saveRoomSession();
+          updateRoomUi(data);
+          say('你已成为新房主');
+        } catch (_) {
+          // 下一轮同步会再次尝试接管。
+        } finally {
+          hostClaimInFlight = false;
+        }
       }
 
       function scheduleRoomSync(delay = 80) {
@@ -559,6 +606,7 @@
           participantId: data.participantId,
           nickname,
           hostKey,
+          hostParticipantId: data.hostParticipantId || (hostKey ? data.participantId : null),
           version: data.version,
           finalized: Boolean(data.finalized),
           participants: data.participants || [],
@@ -574,6 +622,7 @@
       }
 
       function leaveRoom(confirmFirst = true, message = '已退出联机房间') {
+        if (confirmFirst && state.room?.hostKey) return openHostExitModal();
         if (confirmFirst && !confirm('退出房间后会保留当前画面，但不再同步其他人的调整。确定退出吗？')) return;
         clearTimeout(roomSyncTimer);
         clearTimeout(roomPollTimer);
@@ -586,6 +635,67 @@
         updateRoomUi();
         render();
         say(message);
+      }
+
+      function openHostExitModal() {
+        if (!state.room?.hostKey) return;
+        const candidates = (state.room.participants || []).filter(person => person.id !== state.room.participantId);
+        const select = document.querySelector('#transferTargetSelect');
+        select.innerHTML = candidates.map(person => `<option value="${escapeHtml(person.id)}">${escapeHtml(person.name)}</option>`).join('');
+        document.querySelector('#transferField').hidden = !candidates.length;
+        document.querySelector('#transferRoomBtn').hidden = !candidates.length;
+        document.querySelector('#hostExitNote').textContent = candidates.length
+          ? '转让后你会退出；解散后所有参与者都会离开，房间链接立即失效。'
+          : '当前没有其他参与者可以接任，房主只能解散房间。';
+        hostExitModal.classList.add('open');
+        hostExitModal.setAttribute('aria-hidden', 'false');
+      }
+
+      function closeHostExitModal() {
+        hostExitModal.classList.remove('open');
+        hostExitModal.setAttribute('aria-hidden', 'true');
+      }
+
+      async function transferRoomAndLeave() {
+        if (!state.room?.hostKey) return;
+        const button = document.querySelector('#transferRoomBtn');
+        const targetParticipantId = document.querySelector('#transferTargetSelect').value;
+        if (!targetParticipantId) return say('请选择接任房主');
+        button.disabled = true;
+        try {
+          await pushRoomState();
+          await requestJson(`/api/rooms/${state.room.code}/transfer`, {
+            method: 'POST',
+            headers: { 'content-type': 'application/json' },
+            body: JSON.stringify({ hostKey: state.room.hostKey, targetParticipantId })
+          });
+          closeHostExitModal();
+          leaveRoom(false, '房主已转让，你已退出房间');
+        } catch (error) {
+          say(error.message || '转让失败');
+        } finally {
+          button.disabled = false;
+        }
+      }
+
+      async function dissolveCurrentRoom() {
+        if (!state.room?.hostKey) return;
+        if (!confirm('确定解散房间吗？所有参与者都会离开，且无法恢复。')) return;
+        const button = document.querySelector('#dissolveRoomBtn');
+        button.disabled = true;
+        try {
+          await requestJson(`/api/rooms/${state.room.code}/dissolve`, {
+            method: 'POST',
+            headers: { 'content-type': 'application/json' },
+            body: JSON.stringify({ hostKey: state.room.hostKey })
+          });
+          closeHostExitModal();
+          leaveRoom(false, '房间已解散');
+        } catch (error) {
+          say(error.message || '解散失败');
+        } finally {
+          button.disabled = false;
+        }
       }
 
       function openRoomModal() {
@@ -1215,16 +1325,21 @@
       document.querySelector('#copyRoomBtn').addEventListener('click', copyRoomInvite);
       document.querySelector('#finalizeBtn').addEventListener('click', toggleFinalized);
       document.querySelector('#leaveRoomBtn').addEventListener('click', () => leaveRoom(true));
+      document.querySelector('#hostExitCloseBtn').addEventListener('click', closeHostExitModal);
+      document.querySelector('#transferRoomBtn').addEventListener('click', transferRoomAndLeave);
+      document.querySelector('#dissolveRoomBtn').addEventListener('click', dissolveCurrentRoom);
       document.querySelector('#joinCodeInput').addEventListener('input', event => {
         event.target.value = event.target.value.replace(/\D/g, '').slice(0, 6);
       });
       roomModal.addEventListener('click', event => { if (event.target === roomModal) closeRoomModal(); });
+      hostExitModal.addEventListener('click', event => { if (event.target === hostExitModal) closeHostExitModal(); });
       document.querySelector('#exportBtn').addEventListener('click', exportBoard);
       document.querySelector('#recordBtn').addEventListener('click', () => toggleRecording(true));
       fileInput.addEventListener('change', async () => { await addFiles(fileInput.files); fileInput.value = ''; });
 
       window.addEventListener('keydown', event => {
         if (event.key === 'Escape' && roomModal.classList.contains('open')) closeRoomModal();
+        if (event.key === 'Escape' && hostExitModal.classList.contains('open')) closeHostExitModal();
         if (event.key === 'Escape' && document.body.classList.contains('recording')) toggleRecording(false);
         if (event.key.toLowerCase() === 'r' && !['INPUT', 'TEXTAREA'].includes(document.activeElement.tagName)) toggleRecording();
       });
