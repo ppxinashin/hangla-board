@@ -102,6 +102,11 @@ assert.equal(image.response.headers.get('content-type'), 'image/png');
 
 const page = await worker.fetch(new Request('https://example.test/'), env);
 assert.equal(page.status, 200);
-assert.match(await page.text(), /联机房间/);
+const pageHtml = await page.text();
+assert.match(pageHtml, /联机房间/);
+assert.match(pageHtml, /\[hidden\] \{ display: none !important; \}/);
+assert.match(pageHtml, /网络连接失败，请稍后重试/);
+assert.match(pageHtml, /url\.searchParams\.set\('room', code\)/);
+assert.match(pageHtml, /updateRoomAddress\(data\.code\)/);
 
 console.log('Worker collaboration tests passed');
