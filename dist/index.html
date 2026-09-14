@@ -276,7 +276,7 @@
     </header>
 
     <section id="roomBar" class="room-bar" aria-label="联机房间状态" hidden>
-      <div class="room-info"><span class="online-dot" aria-hidden="true"></span><span>房间 <strong id="roomCode" class="room-code">000000</strong></span><span id="roomFinalLabel" class="room-final-label">已定稿</span></div>
+      <div class="room-info"><span class="online-dot" aria-hidden="true"></span><span>房间 <strong id="roomCode" class="room-code">A1B2C3D4</strong></span><span id="roomFinalLabel" class="room-final-label">已定稿</span></div>
       <div id="roomPeople" class="room-people">1 人在线</div>
       <div class="room-actions"><button id="copyRoomBtn" type="button">复制邀请</button><button id="finalizeBtn" class="finalize" type="button" hidden>锁定最终排名</button><button id="leaveRoomBtn" type="button">退出房间</button></div>
     </section>
@@ -313,7 +313,7 @@
         <div class="room-choice">
           <button id="createRoomBtn" class="primary room-submit" type="button">创建新房间</button>
           <span class="room-or">或者</span>
-          <div class="room-field"><label for="joinCodeInput">输入 6 位房间号</label><input id="joinCodeInput" class="room-number" type="text" inputmode="numeric" maxlength="6" autocomplete="one-time-code" placeholder="000000"><button id="joinRoomBtn" class="room-submit" type="button">加入房间</button></div>
+          <div class="room-field"><label for="joinCodeInput">输入 8 位房间号</label><input id="joinCodeInput" class="room-number" type="text" inputmode="text" maxlength="8" autocomplete="one-time-code" autocapitalize="characters" spellcheck="false" placeholder="A1B2C3D4"><button id="joinRoomBtn" class="room-submit" type="button">加入房间</button></div>
         </div>
         <p class="room-note">联机后，标题、主题、档位和图片调整会同步给房间内所有人。房主定稿后将暂停编辑。</p>
       </div>
@@ -799,9 +799,9 @@
       async function joinRoom() {
         const button = document.querySelector('#joinRoomBtn');
         const nickname = document.querySelector('#nicknameInput').value.trim();
-        const code = document.querySelector('#joinCodeInput').value.replace(/\D/g, '');
+        const code = document.querySelector('#joinCodeInput').value.toUpperCase().replace(/[^A-Z0-9]/g, '');
         if (!nickname) return say('请先填写昵称');
-        if (code.length !== 6) return say('请输入 6 位房间号');
+        if (code.length !== 8) return say('请输入 8 位字母或数字房间号');
         if (allItemIds().length && !confirm('加入房间会用房间里的共同排名替换当前画面，确定加入吗？')) return;
         button.disabled = true;
         button.textContent = '加入中…';
@@ -1329,7 +1329,7 @@
       document.querySelector('#transferRoomBtn').addEventListener('click', transferRoomAndLeave);
       document.querySelector('#dissolveRoomBtn').addEventListener('click', dissolveCurrentRoom);
       document.querySelector('#joinCodeInput').addEventListener('input', event => {
-        event.target.value = event.target.value.replace(/\D/g, '').slice(0, 6);
+        event.target.value = event.target.value.toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 8);
       });
       roomModal.addEventListener('click', event => { if (event.target === roomModal) closeRoomModal(); });
       hostExitModal.addEventListener('click', event => { if (event.target === hostExitModal) closeHostExitModal(); });
@@ -1421,8 +1421,8 @@
       (async () => {
         const resumed = await resumeRoom();
         if (resumed) return;
-        const invitedCode = new URLSearchParams(location.search).get('room')?.replace(/\D/g, '').slice(0, 6);
-        if (invitedCode?.length === 6) {
+        const invitedCode = new URLSearchParams(location.search).get('room')?.toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 8);
+        if (invitedCode?.length === 8) {
           document.querySelector('#joinCodeInput').value = invitedCode;
           openRoomModal();
         }
