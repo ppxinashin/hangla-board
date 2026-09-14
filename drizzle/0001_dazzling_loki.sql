@@ -1,0 +1,1 @@
+ALTER TABLE `rooms` ADD `host_participant_id` text;
