@@ -1,0 +1,592 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="theme-color" content="#0b0d10" />
+  <meta name="description" content="一个为视频创作者准备的轻量从夯到拉分档看板。" />
+  <title>夯拉板</title>
+  <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='14' fill='%230b0d10'/%3E%3Cpath d='M14 16h36v9H14zm0 13h28v9H14zm0 13h20v9H14z' fill='%23f3ff63'/%3E%3C/svg%3E" />
+  <style>
+    :root {
+      color-scheme: dark;
+      --bg: #0b0d10;
+      --panel: #12151a;
+      --panel-2: #171b21;
+      --line: #2a3039;
+      --text: #f5f6f7;
+      --muted: #9aa3ae;
+      --accent: #eaff5b;
+      --accent-ink: #151800;
+      --danger: #ff6d68;
+      --tile: 92px;
+    }
+
+    * { box-sizing: border-box; }
+
+    html, body { margin: 0; min-height: 100%; background: var(--bg); color: var(--text); }
+
+    body {
+      font-family: Inter, ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
+      overflow-x: hidden;
+    }
+
+    button, input { font: inherit; }
+
+    button {
+      border: 1px solid var(--line);
+      border-radius: 10px;
+      background: var(--panel-2);
+      color: var(--text);
+      min-height: 42px;
+      padding: 0 15px;
+      cursor: pointer;
+      transition: transform .16s ease, border-color .16s ease, background .16s ease;
+    }
+
+    button:hover { border-color: #4b5563; background: #20252d; }
+    button:active { transform: translateY(1px); }
+    button:focus-visible, input:focus-visible { outline: 3px solid rgba(234,255,91,.38); outline-offset: 2px; }
+
+    .primary { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); font-weight: 800; }
+    .primary:hover { background: #f1ff91; border-color: #f1ff91; }
+
+    .app-shell { min-height: 100vh; display: flex; flex-direction: column; }
+
+    .topbar {
+      min-height: 76px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 20px;
+      padding: 14px 24px;
+      border-bottom: 1px solid var(--line);
+      background: rgba(11,13,16,.94);
+      position: sticky;
+      top: 0;
+      z-index: 20;
+      backdrop-filter: blur(16px);
+    }
+
+    .brand { display: flex; align-items: center; gap: 13px; min-width: 190px; }
+    .brand-mark { width: 42px; height: 42px; border-radius: 11px; background: var(--accent); color: var(--accent-ink); display: grid; place-items: center; font-size: 24px; font-weight: 1000; transform: rotate(-3deg); }
+    .brand h1 { margin: 0; font-size: 1.08rem; letter-spacing: .01em; }
+    .brand span { display: block; margin-top: 2px; color: var(--muted); font-size: .78rem; }
+
+    .actions { display: flex; gap: 9px; flex-wrap: wrap; justify-content: flex-end; }
+    .button-icon { display: inline-block; margin-right: 7px; font-weight: 900; }
+    .theme-control { min-height: 42px; display: flex; align-items: center; gap: 9px; padding: 0 11px 0 13px; border: 1px solid var(--line); border-radius: 10px; background: var(--panel-2); color: var(--muted); font-size: .88rem; }
+    .theme-control select { border: 0; background: transparent; color: var(--text); font: inherit; font-weight: 700; cursor: pointer; }
+    .theme-control select:focus { outline: 0; }
+
+    .workspace { width: min(1500px, 100%); margin: 0 auto; padding: 24px; flex: 1; }
+
+    .board-header { display: flex; align-items: end; justify-content: space-between; gap: 20px; margin-bottom: 14px; }
+    .board-header h2 { font-size: clamp(1.35rem, 2vw, 2rem); line-height: 1.1; margin: 0 0 6px; }
+    .board-header p { color: var(--muted); margin: 0; font-size: .9rem; }
+
+    .board {
+      overflow: hidden;
+      border: 1px solid var(--line);
+      border-radius: 14px;
+      background: var(--panel);
+      box-shadow: 0 24px 80px rgba(0,0,0,.26);
+    }
+
+    .tier {
+      display: grid;
+      grid-template-columns: 148px minmax(0, 1fr) 92px;
+      min-height: 116px;
+      border-bottom: 1px solid var(--line);
+    }
+    .tier:last-child { border-bottom: 0; }
+
+    .tier-name {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 13px;
+      background: var(--tier-color);
+    }
+
+    .tier-name input {
+      width: 100%;
+      border: 0;
+      border-bottom: 2px solid transparent;
+      background: transparent;
+      color: #151515;
+      text-align: center;
+      font-size: 1rem;
+      font-weight: 1000;
+      padding: 8px 2px;
+    }
+    .tier-name input:hover, .tier-name input:focus { border-bottom-color: rgba(0,0,0,.28); outline: 0; }
+
+    .tier-drop {
+      display: flex;
+      flex-wrap: wrap;
+      align-content: flex-start;
+      gap: 8px;
+      min-width: 0;
+      padding: 11px;
+      background-image: linear-gradient(90deg, rgba(255,255,255,.012) 1px, transparent 1px), linear-gradient(rgba(255,255,255,.012) 1px, transparent 1px);
+      background-size: 20px 20px;
+    }
+
+    .tier-drop.drag-over, .asset-bank.drag-over { background-color: rgba(234,255,91,.08); box-shadow: inset 0 0 0 2px var(--accent); }
+
+    .tier-tools { display: flex; align-items: center; justify-content: center; gap: 2px; padding: 4px; border-left: 1px solid var(--line); }
+    .drag-tier { width: 36px; height: 36px; min-height: 36px; padding: 0; color: var(--muted); border: 0; background: transparent; font-size: 1.2rem; cursor: grab; letter-spacing: -4px; }
+    .drag-tier:hover { color: var(--accent); background: rgba(234,255,91,.08); }
+    .drag-tier:active { cursor: grabbing; }
+    .delete-tier { width: 36px; height: 36px; min-height: 36px; padding: 0; color: var(--muted); border: 0; background: transparent; font-size: 1.25rem; }
+    .delete-tier:hover { color: var(--danger); background: rgba(255,109,104,.1); }
+    .tier.tier-drag-before { box-shadow: inset 0 4px 0 var(--accent); }
+    .tier.tier-drag-after { box-shadow: inset 0 -4px 0 var(--accent); }
+
+    .tile {
+      position: relative;
+      width: var(--tile);
+      height: var(--tile);
+      border-radius: 9px;
+      overflow: hidden;
+      border: 2px solid rgba(255,255,255,.13);
+      background: #252a32;
+      cursor: grab;
+      box-shadow: 0 6px 14px rgba(0,0,0,.24);
+      user-select: none;
+    }
+    .tile:active { cursor: grabbing; }
+    .tile.dragging { opacity: .35; }
+    .tile img { width: 100%; height: 100%; display: block; object-fit: cover; pointer-events: none; }
+    .tile button { position: absolute; top: 4px; right: 4px; width: 25px; height: 25px; min-height: 25px; padding: 0; border: 0; border-radius: 50%; background: rgba(6,7,9,.82); opacity: 0; }
+    .tile:hover button, .tile button:focus { opacity: 1; }
+
+    .bank-section { margin-top: 18px; border: 1px solid var(--line); border-radius: 14px; background: var(--panel); overflow: hidden; }
+    .bank-header { min-height: 58px; display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 9px 14px 9px 18px; border-bottom: 1px solid var(--line); }
+    .bank-title { display: flex; align-items: baseline; gap: 10px; }
+    .bank-title h3 { margin: 0; font-size: 1rem; }
+    .count { color: var(--muted); font-size: .8rem; }
+
+    .asset-bank { min-height: 132px; display: flex; flex-wrap: wrap; align-content: flex-start; gap: 9px; padding: 14px; }
+    .empty { width: 100%; min-height: 102px; display: grid; place-items: center; color: var(--muted); text-align: center; border: 1px dashed #343b45; border-radius: 10px; font-size: .9rem; line-height: 1.7; padding: 20px; }
+
+    #fileInput { position: absolute; opacity: 0; width: 1px; height: 1px; pointer-events: none; }
+
+    .drop-mask { position: fixed; inset: 0; z-index: 100; display: none; place-items: center; background: rgba(5,7,9,.82); backdrop-filter: blur(8px); }
+    .drop-mask.visible { display: grid; }
+    .drop-card { border: 2px dashed var(--accent); border-radius: 22px; padding: 55px 80px; color: var(--accent); font-size: 1.25rem; font-weight: 800; background: rgba(234,255,91,.06); }
+
+    .toast { position: fixed; left: 50%; bottom: 24px; z-index: 120; transform: translate(-50%, 20px); opacity: 0; pointer-events: none; padding: 11px 17px; border-radius: 99px; background: #f3f5f7; color: #16191d; font-weight: 700; transition: .2s ease; }
+    .toast.show { opacity: 1; transform: translate(-50%, 0); }
+
+    .recording-badge { display: none; }
+
+    body.recording { background: #000; }
+    body.recording .topbar, body.recording .board-header, body.recording .tier-tools, body.recording .bank-header { display: none; }
+    body.recording .workspace { width: 100%; height: 100vh; padding: 0; margin: 0; display: grid; grid-template-rows: minmax(0, 1fr) 132px; overflow: hidden; }
+    body.recording .board { border: 0; border-radius: 0; min-height: 0; height: 100%; box-shadow: none; overflow: hidden; }
+    body.recording .tier { grid-template-columns: clamp(115px, 13vw, 210px) minmax(0, 1fr); min-height: calc((100vh - 132px) / var(--tier-count)); height: calc((100vh - 132px) / var(--tier-count)); }
+    body.recording .tier-name input { font-size: clamp(1rem, 2vw, 1.75rem); pointer-events: none; }
+    body.recording .tier-drop { padding: 10px; align-content: center; background-image: none; }
+    body.recording .tile { width: min(clamp(68px, 7.8vw, 122px), calc((100vh - 154px) / var(--tier-count))); height: min(clamp(68px, 7.8vw, 122px), calc((100vh - 154px) / var(--tier-count))); flex: 0 0 auto; }
+    body.recording .tile button { display: none; }
+    body.recording .bank-section { display: block; height: 132px; min-height: 132px; margin: 0; border: 0; border-top: 2px solid rgba(234,255,91,.72); border-radius: 0; background: #090b0e; overflow: hidden; }
+    body.recording .asset-bank { height: 130px; min-height: 130px; flex-wrap: nowrap; align-items: center; align-content: center; overflow-x: auto; overflow-y: hidden; padding: 14px 18px; background: linear-gradient(90deg, rgba(234,255,91,.035), transparent 45%); }
+    body.recording .asset-bank .empty { min-width: 100%; min-height: 96px; border-color: rgba(255,255,255,.12); }
+    body.recording .recording-badge { display: block; position: fixed; right: 16px; bottom: 14px; z-index: 40; color: rgba(255,255,255,.42); font-size: 12px; letter-spacing: .08em; opacity: 0; transition: opacity .2s ease; }
+    body.recording:hover .recording-badge { opacity: 1; }
+
+    @media (max-width: 760px) {
+      :root { --tile: 74px; }
+      .topbar { align-items: flex-start; padding: 12px 14px; }
+      .brand span { display: none; }
+      .brand { min-width: 0; }
+      .brand-mark { width: 38px; height: 38px; }
+      .actions button { padding: 0 11px; }
+      .actions .button-label { display: none; }
+      .button-icon { margin-right: 0; }
+      .workspace { padding: 14px; }
+      .tier { grid-template-columns: 96px minmax(0, 1fr) 78px; min-height: 100px; }
+      .tier-name { padding: 6px; }
+      .tier-name input { font-size: .88rem; }
+      .board-header { align-items: flex-start; }
+      .board-header p { max-width: 28ch; }
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+      *, *::before, *::after { scroll-behavior: auto !important; transition: none !important; }
+    }
+  </style>
+</head>
+<body>
+  <div class="app-shell">
+    <header class="topbar">
+      <div class="brand">
+        <div class="brand-mark" aria-hidden="true">夯</div>
+        <div><h1>夯拉板</h1><span>视频创作者分档工具</span></div>
+      </div>
+      <div class="actions" aria-label="看板操作">
+        <label class="theme-control"><span>主题</span><select id="themeSelect" aria-label="档位颜色主题"><option value="rainbow">彩虹色</option><option value="ember">红橙黄白</option></select></label>
+        <button id="addTierBtn" type="button" title="增加一个档位"><span class="button-icon">＋</span><span class="button-label">加一档</span></button>
+        <button id="uploadBtn" type="button" class="primary" title="批量上传图片"><span class="button-icon">↑</span><span class="button-label">上传图片</span></button>
+        <button id="recordBtn" type="button" title="隐藏控件并进入全屏"><span class="button-icon">●</span><span class="button-label">干净录制</span></button>
+      </div>
+    </header>
+
+    <main class="workspace">
+      <div class="board-header">
+        <div><h2>这期怎么排？</h2><p>拖动图片进档位，点击档名可以直接修改。</p></div>
+      </div>
+      <section id="board" class="board" aria-label="分档看板"></section>
+
+      <section class="bank-section" aria-label="待分档图片">
+        <div class="bank-header">
+          <div class="bank-title"><h3>待分档</h3><span id="itemCount" class="count">0 张</span></div>
+          <button id="bankUploadBtn" type="button">＋ 添加图片</button>
+        </div>
+        <div id="assetBank" class="asset-bank" data-zone="bank"></div>
+      </section>
+    </main>
+  </div>
+
+  <input id="fileInput" type="file" accept="image/png,image/jpeg,image/webp,image/gif" multiple />
+  <div id="dropMask" class="drop-mask" aria-hidden="true"><div class="drop-card">松手即可添加图片</div></div>
+  <div class="recording-badge">按 ESC 退出录制模式</div>
+  <div id="toast" class="toast" role="status" aria-live="polite"></div>
+
+  <script>
+    (() => {
+      const THEMES = {
+        rainbow: ['#f05b56', '#f09b53', '#f2d35d', '#8ecb67', '#62b9d8', '#8d7bd8', '#d27ac0'],
+        ember: ['#ef4444', '#f97316', '#facc15', '#fde68a', '#f8fafc']
+      };
+      const state = {
+        theme: 'rainbow',
+        tiers: [
+          { id: crypto.randomUUID(), name: '夯', items: [] },
+          { id: crypto.randomUUID(), name: '顶级', items: [] },
+          { id: crypto.randomUUID(), name: '人上人', items: [] },
+          { id: crypto.randomUUID(), name: 'NPC', items: [] },
+          { id: crypto.randomUUID(), name: '拉完了', items: [] }
+        ],
+        bank: [],
+        items: new Map(),
+        draggingId: null,
+        draggingTierId: null
+      };
+
+      const board = document.querySelector('#board');
+      const bank = document.querySelector('#assetBank');
+      const fileInput = document.querySelector('#fileInput');
+      const itemCount = document.querySelector('#itemCount');
+      const dropMask = document.querySelector('#dropMask');
+      const toast = document.querySelector('#toast');
+      let toastTimer;
+      let externalDragDepth = 0;
+
+      function say(message) {
+        toast.textContent = message;
+        toast.classList.add('show');
+        clearTimeout(toastTimer);
+        toastTimer = setTimeout(() => toast.classList.remove('show'), 1800);
+      }
+
+      function allItemIds() {
+        return [...state.bank, ...state.tiers.flatMap(tier => tier.items)];
+      }
+
+      function themeColorAt(index) {
+        const palette = THEMES[state.theme];
+        return state.theme === 'rainbow' ? palette[index % palette.length] : palette[Math.min(index, palette.length - 1)];
+      }
+
+      function applyTheme(themeName) {
+        if (!THEMES[themeName]) return;
+        state.theme = themeName;
+        render();
+        say(themeName === 'rainbow' ? '已切换为彩虹色' : '已切换为红橙黄白');
+      }
+
+      function locateItem(id) {
+        if (state.bank.includes(id)) return { type: 'bank', list: state.bank };
+        const tier = state.tiers.find(entry => entry.items.includes(id));
+        return tier ? { type: 'tier', list: tier.items, tier } : null;
+      }
+
+      function moveItem(id, targetType, targetId, beforeId = null) {
+        const source = locateItem(id);
+        if (!source) return;
+        source.list.splice(source.list.indexOf(id), 1);
+        const target = targetType === 'bank' ? state.bank : state.tiers.find(t => t.id === targetId)?.items;
+        if (!target) return;
+        const targetIndex = beforeId ? target.indexOf(beforeId) : -1;
+        target.splice(targetIndex >= 0 ? targetIndex : target.length, 0, id);
+        render();
+      }
+
+      function tileElement(id) {
+        const item = state.items.get(id);
+        const tile = document.createElement('article');
+        tile.className = 'tile';
+        tile.draggable = true;
+        tile.dataset.itemId = id;
+        tile.title = item.name;
+        tile.innerHTML = `<img src="${item.url}" alt="${escapeHtml(item.name)}"><button type="button" aria-label="删除 ${escapeHtml(item.name)}">×</button>`;
+
+        tile.addEventListener('dragstart', event => {
+          state.draggingId = id;
+          event.dataTransfer.effectAllowed = 'move';
+          event.dataTransfer.setData('text/plain', id);
+          requestAnimationFrame(() => tile.classList.add('dragging'));
+        });
+        tile.addEventListener('dragend', () => {
+          state.draggingId = null;
+          tile.classList.remove('dragging');
+          document.querySelectorAll('.drag-over').forEach(el => el.classList.remove('drag-over'));
+        });
+        tile.addEventListener('dragover', event => {
+          if (!state.draggingId || state.draggingId === id) return;
+          event.preventDefault();
+        });
+        tile.addEventListener('drop', event => {
+          if (!state.draggingId || state.draggingId === id) return;
+          event.preventDefault();
+          event.stopPropagation();
+          const parent = tile.parentElement;
+          moveItem(state.draggingId, parent.dataset.zone, parent.dataset.tierId, id);
+        });
+        tile.querySelector('button').addEventListener('click', () => removeItem(id));
+        return tile;
+      }
+
+      function escapeHtml(value) {
+        return value.replace(/[&<>'"]/g, char => ({ '&':'&amp;', '<':'&lt;', '>':'&gt;', "'":'&#39;', '"':'&quot;' })[char]);
+      }
+
+      function attachZoneEvents(zone, type, id = '') {
+        zone.addEventListener('dragover', event => {
+          if (!state.draggingId) return;
+          event.preventDefault();
+          event.dataTransfer.dropEffect = 'move';
+          zone.classList.add('drag-over');
+        });
+        zone.addEventListener('dragleave', event => {
+          if (!zone.contains(event.relatedTarget)) zone.classList.remove('drag-over');
+        });
+        zone.addEventListener('drop', event => {
+          if (!state.draggingId) return;
+          event.preventDefault();
+          zone.classList.remove('drag-over');
+          moveItem(state.draggingId, type, id);
+        });
+      }
+
+      function render() {
+        board.innerHTML = '';
+        document.body.style.setProperty('--tier-count', Math.max(state.tiers.length, 1));
+        state.tiers.forEach((tier, index) => {
+          const row = document.createElement('div');
+          row.className = 'tier';
+          row.dataset.tierId = tier.id;
+          row.style.setProperty('--tier-color', themeColorAt(index));
+          row.innerHTML = `
+            <div class="tier-name"><input value="${escapeHtml(tier.name)}" aria-label="档位名称"></div>
+            <div class="tier-drop" data-zone="tier" data-tier-id="${tier.id}"></div>
+            <div class="tier-tools">
+              <button class="drag-tier" type="button" draggable="true" aria-label="拖动 ${escapeHtml(tier.name)} 档调整顺序" title="拖动调整档位顺序">⠿</button>
+              <button class="delete-tier" type="button" aria-label="删除 ${escapeHtml(tier.name)} 档">×</button>
+            </div>`;
+          const input = row.querySelector('input');
+          input.addEventListener('input', () => { tier.name = input.value; });
+          row.querySelector('.delete-tier').addEventListener('click', () => deleteTier(tier.id));
+          const dragHandle = row.querySelector('.drag-tier');
+          dragHandle.addEventListener('dragstart', event => {
+            state.draggingTierId = tier.id;
+            event.dataTransfer.effectAllowed = 'move';
+            event.dataTransfer.setData('text/plain', `tier:${tier.id}`);
+          });
+          dragHandle.addEventListener('dragend', () => {
+            state.draggingTierId = null;
+            document.querySelectorAll('.tier-drag-before, .tier-drag-after').forEach(el => el.classList.remove('tier-drag-before', 'tier-drag-after'));
+          });
+          row.addEventListener('dragover', event => {
+            if (!state.draggingTierId || state.draggingTierId === tier.id) return;
+            event.preventDefault();
+            const isAfter = event.clientY > row.getBoundingClientRect().top + row.getBoundingClientRect().height / 2;
+            row.classList.toggle('tier-drag-before', !isAfter);
+            row.classList.toggle('tier-drag-after', isAfter);
+          });
+          row.addEventListener('dragleave', event => {
+            if (!row.contains(event.relatedTarget)) row.classList.remove('tier-drag-before', 'tier-drag-after');
+          });
+          row.addEventListener('drop', event => {
+            if (!state.draggingTierId || state.draggingTierId === tier.id) return;
+            event.preventDefault();
+            event.stopPropagation();
+            const isAfter = event.clientY > row.getBoundingClientRect().top + row.getBoundingClientRect().height / 2;
+            const movingIndex = state.tiers.findIndex(entry => entry.id === state.draggingTierId);
+            const [movingTier] = state.tiers.splice(movingIndex, 1);
+            let targetIndex = state.tiers.findIndex(entry => entry.id === tier.id);
+            if (isAfter) targetIndex += 1;
+            state.tiers.splice(targetIndex, 0, movingTier);
+            state.draggingTierId = null;
+            render();
+            say('档位顺序已调整');
+          });
+          const zone = row.querySelector('.tier-drop');
+          attachZoneEvents(zone, 'tier', tier.id);
+          tier.items.forEach(itemId => zone.appendChild(tileElement(itemId)));
+          board.appendChild(row);
+        });
+
+        bank.innerHTML = '';
+        attachZoneEvents(bank, 'bank');
+        state.bank.forEach(id => bank.appendChild(tileElement(id)));
+        if (!state.bank.length) {
+          const empty = document.createElement('div');
+          empty.className = 'empty';
+          empty.innerHTML = allItemIds().length ? '所有图片都已经完成分档。<br>也可以把图片拖回这里。' : '把图片拖到这里，或点击“上传图片”开始。<br>支持一次选择多张。';
+          bank.appendChild(empty);
+        }
+        itemCount.textContent = `${state.bank.length} 张`;
+      }
+
+      function addTier(name = '新档位') {
+        state.tiers.push({ id: crypto.randomUUID(), name, items: [] });
+        render();
+        say('已增加一个档位');
+      }
+
+      function deleteTier(id) {
+        if (state.tiers.length <= 1) return say('至少保留一个档位');
+        const tier = state.tiers.find(entry => entry.id === id);
+        if (!tier || !confirm(`删除“${tier.name || '未命名'}”档？其中图片会回到待分档区。`)) return;
+        state.bank.push(...tier.items);
+        state.tiers = state.tiers.filter(entry => entry.id !== id);
+        render();
+        say('档位已删除');
+      }
+
+      function removeItem(id) {
+        const item = state.items.get(id);
+        if (!item) return;
+        const location = locateItem(id);
+        if (location) location.list.splice(location.list.indexOf(id), 1);
+        URL.revokeObjectURL(item.url);
+        state.items.delete(id);
+        render();
+      }
+
+      function addFiles(fileList) {
+        const files = [...fileList].filter(file => file.type.startsWith('image/'));
+        if (!files.length) return say('请选择图片文件');
+        files.forEach(file => {
+          const id = crypto.randomUUID();
+          state.items.set(id, { id, name: file.name.replace(/\.[^.]+$/, ''), url: URL.createObjectURL(file) });
+          state.bank.push(id);
+        });
+        render();
+        say(`已添加 ${files.length} 张图片`);
+      }
+
+      async function toggleRecording(force) {
+        const entering = typeof force === 'boolean' ? force : !document.body.classList.contains('recording');
+        document.body.classList.toggle('recording', entering);
+        if (entering) {
+          try { await document.documentElement.requestFullscreen?.(); } catch (_) {}
+        } else if (document.fullscreenElement) {
+          try { await document.exitFullscreen(); } catch (_) {}
+        }
+      }
+
+      document.querySelector('#addTierBtn').addEventListener('click', () => addTier());
+      document.querySelector('#themeSelect').addEventListener('change', event => applyTheme(event.target.value));
+      document.querySelector('#uploadBtn').addEventListener('click', () => fileInput.click());
+      document.querySelector('#bankUploadBtn').addEventListener('click', () => fileInput.click());
+      document.querySelector('#recordBtn').addEventListener('click', () => toggleRecording(true));
+      fileInput.addEventListener('change', () => { addFiles(fileInput.files); fileInput.value = ''; });
+
+      window.addEventListener('keydown', event => {
+        if (event.key === 'Escape' && document.body.classList.contains('recording')) toggleRecording(false);
+        if (event.key.toLowerCase() === 'r' && !['INPUT', 'TEXTAREA'].includes(document.activeElement.tagName)) toggleRecording();
+      });
+      document.addEventListener('fullscreenchange', () => {
+        if (!document.fullscreenElement) document.body.classList.remove('recording');
+      });
+
+      window.addEventListener('dragenter', event => {
+        if (!event.dataTransfer?.types.includes('Files')) return;
+        externalDragDepth++;
+        dropMask.classList.add('visible');
+      });
+      window.addEventListener('dragleave', event => {
+        if (!event.dataTransfer?.types.includes('Files')) return;
+        externalDragDepth--;
+        if (externalDragDepth <= 0) { externalDragDepth = 0; dropMask.classList.remove('visible'); }
+      });
+      window.addEventListener('dragover', event => {
+        if (event.dataTransfer?.types.includes('Files')) event.preventDefault();
+      });
+      window.addEventListener('drop', event => {
+        if (!event.dataTransfer?.files?.length) return;
+        event.preventDefault();
+        externalDragDepth = 0;
+        dropMask.classList.remove('visible');
+        addFiles(event.dataTransfer.files);
+      });
+
+      function registerWebMcpTools() {
+        const context = document.modelContext;
+        if (!context?.registerTool) return;
+        const lifecycle = new AbortController();
+        const options = { signal: lifecycle.signal };
+        const onError = error => console.warn('WebMCP tool registration failed', error);
+        const register = tool => {
+          try { Promise.resolve(context.registerTool(tool, options)).catch(onError); } catch (error) { onError(error); }
+        };
+
+        register({
+          name: 'set_tier_theme',
+          title: '设置档位主题',
+          description: '将所有现有档位切换为彩虹色或红橙黄白配色。',
+          inputSchema: { type: 'object', properties: { theme: { type: 'string', enum: ['rainbow', 'ember'] } }, required: ['theme'], additionalProperties: false },
+          annotations: { readOnlyHint: false, untrustedContentHint: false },
+          execute(input) {
+            if (!input || !THEMES[input.theme]) throw new Error('主题必须是 rainbow 或 ember');
+            applyTheme(input.theme);
+            return { applied: true, theme: state.theme, colors: state.tiers.map((_, index) => themeColorAt(index)) };
+          }
+        });
+
+        register({
+          name: 'add_tier',
+          title: '增加档位',
+          description: '在夯拉板底部增加一个新的空档位。',
+          inputSchema: { type: 'object', properties: { name: { type: 'string', minLength: 1, maxLength: 30 } }, required: ['name'], additionalProperties: false },
+          annotations: { readOnlyHint: false, untrustedContentHint: false },
+          execute(input) {
+            if (!input || typeof input.name !== 'string' || !input.name.trim() || input.name.length > 30) throw new Error('档位名称必须是 1–30 个字符');
+            addTier(input.name.trim());
+            return { added: true, tierName: input.name.trim(), tierCount: state.tiers.length };
+          }
+        });
+
+        register({
+          name: 'read_board',
+          title: '读取看板',
+          description: '读取当前档位名称以及每档图片数量，不修改看板。',
+          inputSchema: { type: 'object', properties: {}, additionalProperties: false },
+          annotations: { readOnlyHint: true, untrustedContentHint: true },
+          execute() {
+            return { tiers: state.tiers.map(tier => ({ name: tier.name, itemCount: tier.items.length })), unrankedCount: state.bank.length };
+          }
+        });
+      }
+
+      render();
+      registerWebMcpTools();
+    })();
+  </script>
+</body>
+</html>
