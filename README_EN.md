@@ -13,6 +13,7 @@ A lightweight Tier List board for video creators. It has no build step or third-
 - Reorder complete tier rows with a drag handle
 - Colors are locked to row positions rather than moving with tier contents
 - Rainbow and red–orange–yellow–white tier themes
+- Export the finished tier list as a high-resolution PNG
 - Clean recording mode that hides editing controls while keeping the unranked tray usable
 - Press `Esc` to leave recording mode
 - Images are processed in the current browser page and are not uploaded to a server
@@ -39,12 +40,13 @@ Then visit `http://localhost:4173`.
 3. Select a tier label to rename it.
 4. Use the handle on the right to reorder an entire tier row.
 5. Choose a color theme from the top bar.
-6. Select **干净录制** to start a clean recording view. Ranking remains interactive while recording.
+6. Select **导出图片** to download the final board as a clean PNG without editing controls.
+7. Select **干净录制** to start a clean recording view. Ranking remains interactive while recording.
 
 ## Current limitations
 
 - Projects are not persisted yet. Refreshing the page clears images and rankings.
-- Image and video export are not implemented yet.
+- Video export is not implemented yet.
 - The current experience is primarily designed for desktop browsers and screen recording.
 
 ## Project structure
@@ -61,7 +63,7 @@ LICENSE           MIT License
 
 - Local autosave and project recovery
 - Background images and canvas aspect ratios
-- PNG and WebM export
+- WebM video export
 - Asset groups and recording queues
 - OBS browser source
 
@@ -72,4 +74,3 @@ Issues and pull requests are welcome. Please keep each change focused and verify
 ## License
 
 [MIT License](LICENSE)
-
