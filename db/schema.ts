@@ -3,6 +3,7 @@ import { index, integer, sqliteTable, text } from 'drizzle-orm/sqlite-core';
 export const rooms = sqliteTable('rooms', {
   code: text('code').primaryKey(),
   hostKey: text('host_key').notNull(),
+  hostParticipantId: text('host_participant_id'),
   stateJson: text('state_json').notNull(),
   version: integer('version').notNull().default(0),
   finalized: integer('finalized', { mode: 'boolean' }).notNull().default(false),
