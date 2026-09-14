@@ -71,6 +71,16 @@ const joined = await call(`/api/rooms/${code}/join`, 'POST', { participantId: 'g
 assert.equal(joined.response.status, 200);
 assert.equal(joined.data.state.title, '联机测试');
 
+const readOnlyRoom = await call(`/api/rooms/${code}`);
+assert.equal(readOnlyRoom.response.status, 200);
+assert.equal(readOnlyRoom.data.code, code);
+assert.equal(readOnlyRoom.data.state.title, '联机测试');
+
+const unchangedRoom = await call(`/api/rooms/${code}?since=0`);
+assert.equal(unchangedRoom.response.status, 200);
+assert.equal(unchangedRoom.data.version, 0);
+assert.equal('state' in unchangedRoom.data, false);
+
 const bytes = new Uint8Array([137, 80, 78, 71]);
 const uploaded = await call(`/api/rooms/${code}/images`, 'POST', bytes, { 'content-type': 'image/png', 'x-file-name': encodeURIComponent('测试图片') });
 assert.equal(uploaded.response.status, 201);
@@ -108,5 +118,8 @@ assert.match(pageHtml, /\[hidden\] \{ display: none !important; \}/);
 assert.match(pageHtml, /网络连接失败，请稍后重试/);
 assert.match(pageHtml, /url\.searchParams\.set\('room', code\)/);
 assert.match(pageHtml, /updateRoomAddress\(data\.code\)/);
+assert.match(pageHtml, /setTimeout\(pollRoom, 100\)/);
+assert.match(pageHtml, /mapWithConcurrency\(files, state\.room \? 4 : 12/);
+assert.match(pageHtml, /optimizeImageForUpload/);
 
 console.log('Worker collaboration tests passed');
